@@ -55,9 +55,9 @@ jobs:
 
           # JSON 文件链接列表
           urls = [
-              "https://raw.githubusercontent.com/jackszb/sing-box-ruleset/main/domainset/reject.json",
-              "https://raw.githubusercontent.com/jackszb/sing-box-ruleset/main/domainset/reject_extra.json",
-              "https://raw.githubusercontent.com/jackszb/sing-box-ruleset/main/domainset/reject_phishing.json"
+              "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject.json",
+              "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_extra.json",
+              "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_phishing.json"
           ]
 
           all_domains = []
