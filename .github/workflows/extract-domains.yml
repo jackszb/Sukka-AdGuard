@@ -77,7 +77,7 @@ jobs:
                       domains = extract_domains(rule)
                       all_domains.extend(domains)
 
-          # 去重并清理域名
+          # 去重并清理域名：确保每个域名没有空格并且是唯一的
           all_domains = list(set([domain.strip() for domain in all_domains if domain.strip()]))
 
           # 将域名保存到文件
@@ -86,7 +86,18 @@ jobs:
               for domain in all_domains:
                   output_file.write(domain + "\n")
 
-          print(f"Domain extraction complete. Check \"{output_file_path}\".")
+          # 生成合并后的二次去重域名列表
+          print("Performing secondary deduplication...")
+          with open(output_file_path, "r") as f:
+              domains = f.readlines()
+              domains = list(set([domain.strip() for domain in domains if domain.strip()]))
+          
+          # 将最终的去重域名列表保存到文件
+          with open(output_file_path, "w") as output_file:
+              for domain in domains:
+                  output_file.write(domain + "\n")
+
+          print(f"Domain extraction and deduplication complete. Check \"{output_file_path}\".")
           ' > extract_domains.py
 
           # 运行 Python 脚本
