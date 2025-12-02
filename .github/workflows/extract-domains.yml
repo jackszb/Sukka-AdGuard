@@ -1,115 +1,116 @@
 name: Update Reject List
 
 on:
-  workflow_dispatch:  # 手动触发工作流
-  schedule:
-    - cron: '0 0 * * *'  # 每天 UTC 0 点运行一次
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/**'  # 只对 workflow 文件的修改触发
+workflow_dispatch:  # 手动触发
+schedule:
+- cron: '0 0 * * *'  # 每天 UTC 0 点运行一次
+push:
+branches:
+- main
+paths:
+- '.github/workflows/**'
 
 jobs:
-  extract-domains:
-    runs-on: ubuntu-latest
-    steps:
-      # Step 1: Checkout repository
-      - name: Checkout repository
-        uses: actions/checkout@v3
+extract-domains:
+runs-on: ubuntu-latest
+steps:
+# Step 1: Checkout repository
+- name: Checkout repository
+uses: actions/checkout@v3
 
-      # Step 2: Set up Python
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
+```
+  # Step 2: Set up Python
+  - name: Set up Python
+    uses: actions/setup-python@v4
+    with:
+      python-version: '3.x'
 
-      # Step 3: Install dependencies
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests
+  # Step 3: Install dependencies
+  - name: Install dependencies
+    run: |
+      python -m pip install --upgrade pip
+      pip install requests
 
-      # Step 4: Create and run Python script to extract and process domains
-      - name: Run Python script to extract and process domains
-        run: |
-          echo '
-          import requests
+  # Step 4: Create and run Python script to extract and process domains
+  - name: Run Python script to extract and process domains
+    run: |
+      echo '
+      import requests
 
-          # Recursive function to extract domains from JSON data
-          def extract_domains(data):
-              domains = []
-              if isinstance(data, dict):
-                  if "domain" in data:
-                      domains.extend(data["domain"])
-                  if "domain_suffix" in data:
-                      domains.extend(data["domain_suffix"])
-                  if "domain_keyword" in data:
-                      domains.extend(data["domain_keyword"])
-              elif isinstance(data, list):
-                  for item in data:
-                      domains.extend(extract_domains(item))
-              return domains
+      # Recursive function to extract domains and regex from JSON rules
+      def extract_domains(data):
+          domains = []
+          if isinstance(data, dict):
+              for key in ["domain", "domain_suffix", "domain_keyword"]:
+                  if key in data:
+                      value = data[key]
+                      if isinstance(value, list):
+                          domains.extend([v.strip() for v in value if v.strip()])
+                      elif isinstance(value, str):
+                          domains.append(value.strip())
+              # Handle domain_regex
+              if "domain_regex" in data:
+                  value = data["domain_regex"]
+                  if isinstance(value, list):
+                      domains.extend([f"/{v.strip()}/" for v in value if v.strip()])
+                  elif isinstance(value, str):
+                      domains.append(f"/{value.strip()}/")
+          elif isinstance(data, list):
+              for item in data:
+                  domains.extend(extract_domains(item))
+          return domains
 
-          # JSON URLs
-          urls = [
-              "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject.json",
-              "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_extra.json",
-              "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_phishing.json"
-          ]
+      urls = [
+          "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject.json",
+          "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_extra.json",
+          "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_phishing.json"
+      ]
 
-          all_domains = []
+      all_domains = []
 
-          # Fetch JSON files
-          for url in urls:
-              response = requests.get(url)
-              if response.status_code != 200:
-                  print(f"Failed to fetch: {url}")
-                  continue
+      # Fetch JSON files
+      for url in urls:
+          response = requests.get(url)
+          if response.status_code != 200:
+              print(f"Failed to fetch: {url}")
+              continue
+          data = response.json()
+          if "rules" in data:
+              for rule in data["rules"]:
+                  all_domains.extend(extract_domains(rule))
 
-              data = response.json()
+      # Clean + deduplicate
+      all_domains = list(set([d.strip() for d in all_domains if d.strip()]))
 
-              if "rules" in data:
-                  for rule in data["rules"]:
-                      all_domains.extend(extract_domains(rule))
+      # Convert to AdGuard format
+      adguard_list = []
+      for domain in all_domains:
+          if domain.startswith("||") or domain.startswith("@@") or domain.startswith("/") or "*" in domain:
+              adguard_list.append(domain)
+          else:
+              adguard_list.append(f"||{domain}^")
 
-          # Clean + deduplicate
-          all_domains = list(set([d.strip() for d in all_domains if d.strip()]))
+      output_file_path = "domains.adblock"
+      with open(output_file_path, "w") as f:
+          for item in sorted(adguard_list):
+              f.write(item + "\n")
 
-          # Convert to AdGuard format: ||domain^
-          adguard_list = []
-          for domain in all_domains:
-              # Keep patterns unchanged
-              if domain.startswith("||") or domain.startswith("@@") or domain.startswith("/") or "*" in domain:
-                  adguard_list.append(domain)
-              else:
-                  adguard_list.append(f"||{domain}^")
+      print(f"AdGuard file generated: {output_file_path}")
+      ' > extract_domains.py
 
-          # Output file
-          output_file_path = "domains.adblock"
+      python3 extract_domains.py
 
-          # Save final list
-          with open(output_file_path, "w") as f:
-              for item in sorted(adguard_list):
-                  f.write(item + "\n")
+  # Step 5: Commit and push extracted domains
+  - name: Commit and push extracted domains
+    run: |
+      git config user.name "github-actions[bot]"
+      git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          print(f"AdGuard file generated: {output_file_path}")
-          ' > extract_domains.py
-
-          python3 extract_domains.py
-
-      # Step 5: Commit and push extracted domains
-      - name: Commit and push extracted domains
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          if git status --short | grep -q "domains.adblock"; then
-            git add domains.adblock
-            git commit -m "Update domains.adblock (AdGuard rules)"
-            git push
-          else
-            echo "No changes to commit"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      if git status --short | grep -q "domains.adblock"; then
+        git add domains.adblock
+        git commit -m "Update domains.adblock (AdGuard rules)"
+        git push
+      else
+        echo "No changes to commit"
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
