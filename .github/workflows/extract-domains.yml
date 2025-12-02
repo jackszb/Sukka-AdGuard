@@ -1,9 +1,9 @@
 name: Update Reject List
 
 on:
-workflow_dispatch:  # 手动触发
+workflow_dispatch:
 schedule:
-- cron: '0 0 * * *'  # 每天 UTC 0 点运行一次
+- cron: '0 0 * * *'
 push:
 branches:
 - main
@@ -31,72 +31,65 @@ uses: actions/checkout@v3
       python -m pip install --upgrade pip
       pip install requests
 
-  # Step 4: Run Python script to extract and process domains
-  - name: Run Python script to extract and process domains
+  # Step 4: Extract and process domains
+  - name: Extract and process domains
     run: |
-      echo '
-```
+      import requests
 
-import requests
+      def extract_domains(data):
+          domains = []
+          if isinstance(data, dict):
+              for key in ["domain", "domain_suffix", "domain_keyword"]:
+                  if key in data:
+                      value = data[key]
+                      if isinstance(value, list):
+                          domains.extend([v.strip() for v in value if v.strip()])
+                      elif isinstance(value, str):
+                          domains.append(value.strip())
+              if "domain_regex" in data:
+                  value = data["domain_regex"]
+                  if isinstance(value, list):
+                      domains.extend([f"/{v.strip()}/" for v in value if v.strip()])
+                  elif isinstance(value, str):
+                      domains.append(f"/{value.strip()}/")
+          elif isinstance(data, list):
+              for item in data:
+                  domains.extend(extract_domains(item))
+          return domains
 
-def extract_domains(data):
-domains = []
-if isinstance(data, dict):
-for key in ["domain", "domain_suffix", "domain_keyword"]:
-if key in data:
-value = data[key]
-if isinstance(value, list):
-domains.extend([v.strip() for v in value if v.strip()])
-elif isinstance(value, str):
-domains.append(value.strip())
-if "domain_regex" in data:
-value = data["domain_regex"]
-if isinstance(value, list):
-domains.extend([f"/{v.strip()}/" for v in value if v.strip()])
-elif isinstance(value, str):
-domains.append(f"/{value.strip()}/")
-elif isinstance(data, list):
-for item in data:
-domains.extend(extract_domains(item))
-return domains
+      urls = [
+          "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject.json",
+          "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_extra.json",
+          "https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_phishing.json"
+      ]
 
-urls = [
-"[https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject.json](https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject.json)",
-"[https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_extra.json](https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_extra.json)",
-"[https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_phishing.json](https://raw.githubusercontent.com/jackszb/sukka-surge/main/domainset/reject_phishing.json)"
-]
+      all_domains = []
 
-all_domains = []
+      for url in urls:
+          response = requests.get(url)
+          if response.status_code != 200:
+              print(f"Failed to fetch: {url}")
+              continue
+          data = response.json()
+          if "rules" in data:
+              for rule in data["rules"]:
+                  all_domains.extend(extract_domains(rule))
 
-for url in urls:
-response = requests.get(url)
-if response.status_code != 200:
-print(f"Failed to fetch: {url}")
-continue
-data = response.json()
-if "rules" in data:
-for rule in data["rules"]:
-all_domains.extend(extract_domains(rule))
+      all_domains = list(set([d.strip() for d in all_domains if d.strip()]))
 
-all_domains = list(set([d.strip() for d in all_domains if d.strip()]))
+      adguard_list = []
+      for domain in all_domains:
+          if domain.startswith("||") or domain.startswith("@@") or domain.startswith("/") or "*" in domain:
+              adguard_list.append(domain)
+          else:
+              adguard_list.append(f"||{domain}^")
 
-adguard_list = []
-for domain in all_domains:
-if domain.startswith("||") or domain.startswith("@@") or domain.startswith("/") or "*" in domain:
-adguard_list.append(domain)
-else:
-adguard_list.append(f"||{domain}^")
+      output_file_path = "domains.adblock"
+      with open(output_file_path, "w") as f:
+          for item in sorted(adguard_list):
+              f.write(item + "\n")
 
-output_file_path = "domains.adblock"
-with open(output_file_path, "w") as f:
-for item in sorted(adguard_list):
-f.write(item + "\n")
-
-print(f"AdGuard file generated: {output_file_path}")
-' > extract_domains.py
-
-```
-      python3 extract_domains.py
+      print(f"AdGuard file generated: {output_file_path}")
 
   # Step 5: Commit and push extracted domains
   - name: Commit and push extracted domains
