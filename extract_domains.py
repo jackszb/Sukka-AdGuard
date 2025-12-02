@@ -48,9 +48,8 @@ for domain in all_domains:
     else:
         adguard_list.append(f"||{domain}^")
 
-output_file_path = "domains.adblock"
-with open(output_file_path, "w") as f:
+with open("domains.adblock", "w") as f:
     for item in sorted(adguard_list):
         f.write(item + "\n")
 
-print(f"AdGuard file generated: {output_file_path}")
+print("AdGuard file generated: domains.adblock")
